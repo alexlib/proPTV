@@ -1,5 +1,5 @@
-April 01, 2024
-Version: 1.0
+March 01, 2025
+Version: 1.1
 
 ![1](https://github.com/RobinBarta/proPTV/assets/150230392/66660cef-0945-45b3-bc38-355d52a08657)
 
