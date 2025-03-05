@@ -9,10 +9,9 @@ import os
 
 class Dataset_parameter:
     # name of the dataset
-    NameOfDataSet = 'RBC300'
+    NameOfDataSet = 'LPTC_01'
     # number of cameras observing the flow
     NumberOfCams = 4
-    NumberOfCalibPlanes = 5
 
 # %%
 
@@ -26,7 +25,8 @@ def main():
         os.mkdir( path + "/input" ) 
         os.mkdir( path + "/input/calibration_images" )
         [os.mkdir( path + "/input/calibration_images/c"+str(i) ) for i in range(params.NumberOfCams)]
-        [[os.mkdir( path + "/input/calibration_images/c"+str(i)+"/"+str(j) ) for j in range(1,params.NumberOfCalibPlanes+1)] for i in range(params.NumberOfCams)]
+        [os.mkdir( path + "/input/calibration_images/c"+str(i)+"/masked" ) for i in range(params.NumberOfCams)]
+        [os.mkdir( path + "/input/calibration_images/c"+str(i)+"/marker" ) for i in range(params.NumberOfCams)]
         os.mkdir( path + "/input/calibration" )
         [os.mkdir( path + "/input/calibration/c"+str(i) ) for i in range(params.NumberOfCams)]
         os.mkdir( path + "/input/masks" )
@@ -38,6 +38,7 @@ def main():
         os.mkdir( path + "/input/particle_lists" )
         [os.mkdir( path + "/input/particle_lists/c"+str(i) ) for i in range(params.NumberOfCams)]
         os.mkdir( path + "/output" )
+        os.mkdir( path + "/output/VSC" )
         os.mkdir( path + "/analysis" )
 if __name__ == "__main__":
     main()
