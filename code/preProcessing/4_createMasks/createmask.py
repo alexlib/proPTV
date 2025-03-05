@@ -21,13 +21,13 @@ from createmask_functions import *
 
 class Mask_parameter:
     # select camera and time step
-    cam, t = 3, 2000
+    cam, t = 0, 50000
     # adjust brightness of resized image
-    alpha = 1#0.08
+    alpha = 0.1
     
     # path params
     zFill = 4
-    case = 'RBC500'
+    case = 'Ilmenau'
     raw_image = "../../../data/"+case+"/input/raw_images/c{cam}/c{cam}_"+str(t).zfill(zFill)+".tif"
     mask_output = "../../../data/"+case+"/input/masks/c{cam}/c{cam}_mask.tif"
 
@@ -41,7 +41,11 @@ def main():
         img = pco.load(params.raw_image.format(cam=params.cam))
     elif params.raw_image[-3::] == 'tif':
         img = cv2.imread(params.raw_image.format(cam=params.cam),cv2.IMREAD_UNCHANGED)
-    # create raw mask
+    
+    # presave complete mask
+    cv2.imwrite(params.mask_output.format(cam=params.cam),np.asarray(np.ones_like(img)*255,'uint8'))
+    
+    # create individual raw mask
     raw = np.asarray(np.zeros_like(img),'uint8')
       
     # resize image to current screen

@@ -10,39 +10,43 @@ import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 
-from imageprocessing_functions import *
+from imageprocessing2_functions import *
 
 os.chdir('../../../data/')
 
 # %%
 
 class Imgproc_parameter:
+    '''
     case_name, Zeros = 'LPTC_040', 5
-    t_start , t_end = 0, 49
+    t_start , t_end, cpu = 0, 49, 25#joblib.cpu_count()
+    cams = [1,2,3]
     
-    debug, cams = True, [0]
+    debug, show  = False, False
+    
+    window, weight_min = 3, 1.2 # 0, 0 | 3, 1.2
+    threshold, threshold_minimg = 50, 200000000 # 0,0 | 18, 2000
     
     delete_artifacts = False
     blur, Gauskernel, Gauskernelstd = False, [3,3], 1.0
     
-    window, weight_min = 3, 1.2 # 0, 0 | 3, 1.2
-    threshold, threshold_minimg = 500, 200000000 # 0,0 | 18, 2000
-    runs, std = 1, 0.7 #5, 1.0
+    runs, std = 7, 0.7 #5, 1.0
     maxParticle, particleSize = 550000, 2
     '''
     case_name, Zeros = 'Ilmenau', 4
-    t_start , t_end = 50000, 50031
+    t_start , t_end, cpu = 50000, 50200, 25#joblib.cpu_count()
+    cams = [0,1,2,3]
     
-    debug, cams = False, [2,3]
+    debug, show  = False, False
+    
+    window, weight_min = 3, 1.1 # 0, 0 | 3, 1.2
+    threshold, threshold_minimg = 500, 200000000 # 0,0 | 18, 2000
     
     delete_artifacts = False
     blur, Gauskernel, Gauskernelstd = False, [3,3], 1.0
     
-    window, weight_min = 3, 1.22 # 0, 0 | 3, 1.2
-    threshold, threshold_minimg = 5000, 200000000 # 0,0 | 18, 2000
     runs, std = 1, 0.7 #5, 1.0
     maxParticle, particleSize = 20000, 2
-    '''
     
 # %%
 
@@ -63,12 +67,12 @@ def main():
         fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(20,6), sharex=True, sharey=True)
         ax1.imshow(img_origin,cmap='gray',vmax=np.mean(img_origin[img_origin>params.threshold])), ax1.plot(p[:,0],p[:,1],'.',c='red')
         ax2.imshow(min_img,cmap='gray', vmax=np.mean(img_origin[img_origin>params.threshold]))
-        ax3.imshow(img,cmap='gray',vmax=np.mean(img[img>0])), ax2.plot(p[:,0],p[:,1],'.',c='red')
+        ax3.imshow(img,cmap='gray',vmax=np.mean(img[img>0])), ax3.plot(p[:,0],p[:,1],'.',c='red')
         ax4.imshow(img_proc,cmap='gray',vmax=85)
         plt.tight_layout(), plt.show()
     else:
         for c in params.cams:
             print('Image processing camera ' + str(c))
-            joblib.Parallel(n_jobs=joblib.cpu_count())(joblib.delayed(ImageProcessing)(c,t,i,times,params) for i,t in enumerate(tqdm(times ,desc=' processing', position=0, leave=True, delay=0.5)))
+            joblib.Parallel(n_jobs=params.cpu)(joblib.delayed(ImageProcessing)(c,t,i,times,params) for i,t in enumerate(tqdm(times ,desc=' processing', position=0, leave=True, delay=0.5)))
 if __name__ == "__main__":
     main()

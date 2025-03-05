@@ -13,31 +13,11 @@ from skimage.feature import peak_local_max
 from scipy.signal import convolve2d
 
 
-def Get_IDs(center_x, center_y, step_width, size):
-    surrounding_ids = []
-    for y in range(center_y - step_width, center_y + step_width + 1):
-        for x in range(center_x - step_width, center_x + step_width + 1):
-            distance = ((y - center_y) ** 2 + (x - center_x) ** 2) ** 0.5
-            if abs(distance - step_width) < size:
-                surrounding_ids.append([y,x])
-    return np.asarray(surrounding_ids)
-
-
-def Gauss(x,y,I,xmean,ymean,sigma):
-    # Gauss function to blur a particle on an image
-    X = (x-xmean) / sigma
-    Y = (y-ymean) / sigma
-    return I * np.exp( -0.5*(X**2+Y**2) ) / (2*np.pi*sigma**2)
-
-
 def ImageProcessing(cam, t, i, times, params):
     # load image
     img_origin = cv2.imread(params.image_input.format(cam=cam,time=str(t).zfill(params.Zeros)),cv2.IMREAD_UNCHANGED)
     # create processing img
     img = img_origin.copy()
-    
-    # get ID for threshold before subtracting min image
-    ID_thresh = img<params.threshold
     
     # averaging           
     a = i-(params.window//2) if i>=(params.window//2) else 0 
@@ -49,12 +29,21 @@ def ImageProcessing(cam, t, i, times, params):
     
     # thresholding
     img[min_img>params.threshold_minimg] = 0
-    img[ID_thresh] = 0
-    img[img<0] = 0
+    img[img<params.threshold] = 0
     
     # masking
     mask = cv2.imread(params.mask_path.format(cam=cam),cv2.IMREAD_UNCHANGED)
     img[mask==0] = 0
+    
+    # short out to check parameter
+    if params.debug == True:
+        if params.show == True:
+            fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(24,8), sharex=True, sharey=True)
+            ax1.imshow(img_origin,cmap='gray',vmax=np.mean(img_origin[img>params.threshold]))
+            ax2.imshow(min_img,cmap='gray', vmax=np.mean(img_origin[img>params.threshold]))
+            ax3.imshow(img,cmap='gray',vmax=np.mean(img[img>0]))
+            plt.tight_layout(), plt.show()
+            sys.exit()
     
     # delete single artifacts
     if params.delete_artifacts == True:
@@ -68,12 +57,9 @@ def ImageProcessing(cam, t, i, times, params):
     # create particle list for peak detection
     finalList = []
     img_peak = img.copy().astype('float')
-    
-    # calculate intensity distribution
-    Imean = [np.mean(img[img>0])]
-    for i in range(params.particleSize+1):
-        Imean.append( Gauss(i,0,Imean[0],0,0,params.std) )
-    
+    height, width = img_peak.shape[:2]
+    y_coords, x_coords = np.mgrid[:height, :width]
+       
     # peak search
     for n in range(params.runs):
         # peak detection
@@ -84,36 +70,23 @@ def ImageProcessing(cam, t, i, times, params):
             valueX , valueY = img_origin[y,binsX] , img_origin[binsY,x]
             meanX, meanY = np.sum(binsX*valueX) / np.sum(valueX), np.sum(binsY*valueY) / np.sum(valueY)
             CX.append(meanX) , CY.append(meanY)
-        particleList = np.vstack([CX,CY]).T
-        # subtract found images
-        for p in np.rint(particleList).astype('int'):
-            I_sub = np.zeros_like(img_peak)
-            for i in range(params.particleSize+1):
-                IDs = Get_IDs(p[0],p[1], i, 1)
-                I_sub[IDs[:,0],IDs[:,1]] = Imean[i]
-            img_peak -= I_sub
+            # remove peak
+            IDx0, IDx1 = int(np.rint(meanX))-params.particleSize, int(np.rint(meanX))+(params.particleSize+1)
+            IDy0, IDy1 = int(np.rint(meanY))-params.particleSize, int(np.rint(meanY))+(params.particleSize+1)
+            G = img_peak[int(np.rint(meanY)),int(np.rint(meanX))] * np.exp( -0.5*(((x_coords[IDy0:IDy1,IDx0:IDx1]-meanX)/params.std)**2+((y_coords[IDy0:IDy1,IDx0:IDx1]-meanY)/params.std)**2) )
+            img_peak[IDy0:IDy1,IDx0:IDx1] -= G 
         img_peak[img_peak<params.threshold] = 0
+        particleList = np.vstack([CX,CY]).T
         if len(particleList)>0:
-           finalList += list(particleList)
+            if params.debug == True:
+                print('run '+ str(n) + ' - found ' +str(len(particleList)) + ' particle centers')
+            finalList += list(particleList)
     finalList = np.asarray(finalList)
-    
-    # split final list and correct image position
-    d = params.std/2
-    finalList_unique, IDs_unique = np.unique(finalList,axis=0,return_index=True)
-    finalList_rest = np.delete(finalList,IDs_unique ,axis=0)
-    for i, p in enumerate(finalList_rest):
-        x, y = int(np.rint(p[0])), int(np.rint(p[1]))
-        IDs = Get_IDs(x, y, 1, 0.4)
-        ID = IDs[np.argmax(img_origin[IDs[:,0],IDs[:,1]])]
-        dx, dy = d*(ID[1]-p[0]), d*(ID[0]-p[1])
-        finalList_rest[i] = np.array([p[0]+dx, p[1]+dy])
-    finalList = np.append(finalList_unique,finalList_rest,axis=0)
-    
-    finalList_unique, IDs_unique = np.unique(finalList,axis=0,return_index=True)
-    finalList_rest = np.delete(finalList,IDs_unique ,axis=0)
+    finalList, IDs_unique = np.unique(finalList,axis=0,return_index=True)
         
+    # output a processed image
     img_proc = np.zeros_like(img).astype('uint8')
-    img_proc[np.asarray(np.round(CY),dtype=int),np.asarray(np.round(CX),dtype=int)] = 250
+    img_proc[np.asarray(np.round(finalList[:,1]),dtype=int),np.asarray(np.round(finalList[:,0]),dtype=int)] = 250
     img_proc = cv2.GaussianBlur( img_proc , [3,3] , 1 )*3
     
     # save proc image and particle list

@@ -198,7 +198,11 @@ def FindMarker(xyl,xyr,centers,img,cx,cy,params):
     xy_r = np.array(sorted(centers[IDs_r],key=lambda e:e[1]))[::-1]
     # find markers
     plt.figure()
-    i, marker_points = 0, np.empty([0,5])
+    i = 0
+    if params.multiplane == False:
+        marker_points = np.empty([0,5])
+    else:
+        marker_points = np.empty([0,2])
     for l,r in tqdm(zip(xy_l,xy_r), desc=' find markers per line', position=0, leave=True, delay=0.5):
         linear_model = np.polyfit( [l[0],r[0]] , [l[1],r[1]] , 1)
         m, n = linear_model[0] , linear_model[1]
@@ -208,8 +212,11 @@ def FindMarker(xyl,xyr,centers,img,cx,cy,params):
             xy = np.array(sorted(centers[IDs],key=lambda e:e[0])) 
         else:
             xy = np.array(sorted(centers[IDs],key=lambda e:e[0]))[::-1]
-        XYZ = Get3DMarkerPosition(xy,i,params)
-        marker_points = np.append(marker_points,np.append(xy,XYZ,axis=1),axis=0)
+        if params.multiplane == False:
+            XYZ = Get3DMarkerPosition(xy,i,params)
+            marker_points = np.append(marker_points,np.append(xy,XYZ,axis=1),axis=0)
+        else:
+            marker_points = np.append(marker_points,xy,axis=0)
         # plot line fit
         plt.imshow(img,cmap='gray',vmax=np.mean(img))
         plt.plot(xy[:,0],xy[:,1],'o',c='red')
@@ -252,9 +259,9 @@ def Grid_correction(marker_points,img,params):
     xy_cor = find_intersections_vectorized(m_h, n_h, m_v, n_v)
     marker_points_cor = np.append(xy_cor,XYZ,axis=1)
     # plot correction
-    plt.figure()
-    plt.imshow(img,cmap='gray',vmax=np.mean(img))
-    plt.plot(xy[:,0],xy[:,1],'o',c='red')
-    plt.plot(xy_cor[:,0],xy_cor[:,1],'o',c='green')
-    plt.show()
+    #plt.figure()
+    #plt.imshow(img,cmap='gray',vmax=np.mean(img))
+    #plt.plot(xy[:,0],xy[:,1],'o',c='red')
+    #plt.plot(xy_cor[:,0],xy_cor[:,1],'o',c='green')
+    #plt.show()
     return marker_points_cor
