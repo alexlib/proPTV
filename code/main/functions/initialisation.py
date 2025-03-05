@@ -5,11 +5,13 @@
 '''
 
 
-import joblib
+import joblib, sys
 import numpy as np
 
 from tqdm import tqdm
 from scipy import signal
+
+import matplotlib.pyplot as plt
 
 
 def Initialisation(P_clouds,t,params):
@@ -18,17 +20,22 @@ def Initialisation(P_clouds,t,params):
     allTracks = []
     # for N_init run the initialisation process
     for i in range(params.N_init):
-        maxVel = params.maxvel * (6-params.N_init+i+1)/(6)
+        maxVel = params.maxvel * ((i+1)/params.N_init)
         # initialse tracks forward in time
-        tracks = joblib.Parallel(n_jobs=joblib.cpu_count())(joblib.delayed(Linking)(p0, Ps, maxVel, params) for p0 in tqdm(Ps[0],desc='   initialise: ',position=0,leave=True,delay=0.5))
-        tracks_i = np.asarray([track for track in tracks if len(track)>0])
-        if len(tracks_i)>0:
-            tracks_i = UniqueFilter(tracks_i,params)
-        # delete used points
-        Ps, P_clouds, xy_used = ReducePoints(tracks_i,Ps,P_clouds,params)
-        # put tracks in the correct allTracks format
-        for j,track in tqdm(enumerate(tracks_i),desc='   generate tracks: ', position=0, leave=True, delay=0.5):
-            allTracks.append([list(time),list(track[:,:3:]),list(track[:,3:6:]),list(track[:,6:9:]),[xy_used[k][j] for k in range(params.t_init)]])
+        tracks_for = joblib.Parallel(n_jobs=joblib.cpu_count())(joblib.delayed(Linking)(p0, Ps, maxVel, params) for p0 in tqdm(Ps[0],desc='   initialise for: ',position=0,leave=True,delay=0.5))
+        tracks_for = np.asarray([track for track in tracks_for if len(track)>0])
+        # initialse tracks backwards in time
+        tracks_back = joblib.Parallel(n_jobs=joblib.cpu_count())(joblib.delayed(Linking)(p0,Ps[::-1],maxVel,params) for p0 in tqdm(Ps[::-1][0],desc='   initialise back: ',position=0,leave=True,delay=0.5))
+        tracks_back = np.asarray([track for track in tracks_back if len(track)>0])
+        # merge tracks
+        tracks_for = MergeForwardBackwardLinking(tracks_for,tracks_back)
+        if len(tracks_for)>0:
+            tracks_for = UniqueFilter(tracks_for,params) 
+            # delete used points
+            Ps, P_clouds, xy_used = ReducePoints(tracks_for,Ps,P_clouds,params)
+            # put tracks in the correct allTracks format
+            for j,track in tqdm(enumerate(tracks_for),desc='   generate tracks: ', position=0, leave=True, delay=0.5):
+                allTracks.append([list(time),list(track[:,:3:]),list(track[:,3:6:]),list(track[:,6:9:]),[xy_used[k][j] for k in range(params.t_init)]])
     # process P_clouds and save out current Triag Points
     [np.savetxt(params.track_path+"currentTriagPoints_"+str(i-1)+".txt",P_clouds[i],delimiter=',',header="X,Y,Z,error,cx_i,cy_i") for i in range(1,params.t_init)]
     P_clouds = P_clouds[1::]
@@ -39,25 +46,30 @@ def Linking(p0,Ps,maxVel,params):
     # first link
     tracks = [np.array([p0,p1]) for p1 in FindNNPoints(p0, Ps[1], params.NN[0])]
     # second and ongoing links via polynom prediction
+    for i,P in enumerate(Ps[2::]):
+        tracks = np.concatenate([[np.append(track,p.reshape(1,3),axis=0) for p in FindNNPoints((track+Init_Velocity3D(track))[-1],P,params.NN[i+1])] for track in tracks])
+    tracks = [np.hstack([track,Init_Velocity3D(track),Init_Acceleration3D(track)]) for track in tracks if np.max(np.linalg.norm(np.diff(track,axis=0),axis=1))<maxVel]
     if len(tracks)>0:
-        # second and ongoing links via polynom prediction
-        for i,P in enumerate(Ps[2::]):
-            tracks = [[np.append(track,p.reshape(1,3),axis=0) for p in FindNNPoints((track+Init_Velocity3D(track))[-1],P,params.NN[i+1])] for track in tracks]
-            tracks = np.concatenate(tracks)
-        tracks = [np.hstack([track,Init_Velocity3D(track),Init_Acceleration3D(track)]) for track in tracks if np.max(np.linalg.norm(np.diff(track,axis=0),axis=1))<maxVel]
-        if len(tracks)>0:
-            # estimate best track by cost function based on minimal action principle
-            E = np.linalg.norm( np.diff( [np.linalg.norm(track[:,3:6:],axis=1)**2 for track in tracks] ,axis=1) ,axis=1)
-            track_final = tracks[np.argmin(E)]
-            v_final = np.diff(track_final[:,:3:],axis=0)
-            Theta_check = np.asarray([np.degrees(np.arccos(np.dot(v_final[i],v_final[i+1]) / (np.linalg.norm(v_final[i])*np.linalg.norm(v_final[i+1]))))<params.angle for i in range(len(v_final)-1)]).all()
-            if Theta_check:
-                return track_final
+        # estimate best track by cost function based on minimal action principle
+        #E = np.linalg.norm( np.diff( [np.linalg.norm((np.diff(track[:,:3],axis=0)/np.max(np.abs(np.diff(track[:,:3],axis=0)))),axis=1)**2 for track in tracks] ,axis=1) ,axis=1)
+        E = np.linalg.norm( np.diff( [np.linalg.norm(((track[:,3:6]/np.max(np.abs(track[:,3:6])))),axis=1)**2 for track in tracks] ,axis=1) ,axis=1)
+        track_final = tracks[np.argmin(E)]
+        v_final = np.diff(track_final[:,:3],axis=0)
+        Theta_check = np.asarray([np.degrees(np.arccos(np.dot(v_final[i],v_final[i+1]) / (np.linalg.norm(v_final[i])*np.linalg.norm(v_final[i+1]))))<params.angle for i in range(len(v_final)-1)]).all()
+        if Theta_check:
+            return track_final
     return []
 
 def FindNNPoints(p,P,N):
     # find N nearest neighbour points in P around p
     return P[np.argpartition(np.linalg.norm(p-P,axis=1), N)[:N:]]
+
+def MergeForwardBackwardLinking(tracks_for,tracks_back):
+    # change backward tracks to forward time scheme
+    tracks_back = np.asarray([track[::-1,:] for track in tracks_back])
+    # merge tracks
+    tracks = [track for track in tqdm(tracks_for,desc='   merge initialisation: ', position=0, leave=True, delay=0.5) if len(np.argwhere(np.linalg.norm(tracks_back[:,:,:3]-track[:,:3],axis=(1,2))==0)[:,0]) == 1]
+    return np.asarray(tracks)
 
 def UniqueFilter(tracks,params):
     # only unique initalised tracks are passed
@@ -82,6 +94,12 @@ def ReducePoints(tracks,Ps,P_clouds,params):
         Ps_new.append( np.delete(np.asarray(Ps[i]),np.asarray(deleteList),axis=0) if len(deleteList)!=0 else Ps[i] )
         P_clouds_new.append( np.delete(np.asarray(P_clouds[i]),np.asarray(deleteList),axis=0) if len(deleteList)!=0 else P_clouds[i] )
     return Ps_new, P_clouds_new, xy_used
+
+def Theta(v1,v2):
+    # estimate the angle between 2 vectors
+    v1_norm = np.linalg.norm(v1) if np.linalg.norm(v1)>0 else 1E-8
+    v2_norm = np.linalg.norm(v2) if np.linalg.norm(v2)>0 else 1E-8
+    return np.degrees(np.arccos(np.dot(v1,v2) / (v1_norm*v2_norm)))
 
 def Init_Position3D(track):
     # estimate the position of a track of arbitory length

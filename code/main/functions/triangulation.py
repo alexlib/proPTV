@@ -119,7 +119,8 @@ def GetTriangulationCandidates(point,ImgPoints_cams,img,aX,aY,cams,currentCams,p
 
 
 def IntensityCheck(img,P,aX,aY,params):
-    return (np.array([params.Imin])<[img[i][int(np.rint(F(P,aY[i]))),int(np.rint(F(P,aX[i])))] for i in range(len(params.cams))]).all()  
+    shape = img[0].shape
+    return (np.array([params.Imin])<[img[i][int(np.clip(np.rint(F(P,aY[i])),0,shape[0]-1)),int(np.clip(np.rint(F(P,aX[i])),0,shape[1]-1))] for i in range(len(params.cams))]).all()   
 
 def DistanceToFunction(p, coeffs, x):
     def d(x, p, coeffs):
