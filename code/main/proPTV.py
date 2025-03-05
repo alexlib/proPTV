@@ -24,6 +24,7 @@ from functions.setup import *
 from functions.soloff import *
 from functions.triangulation import *
 from functions.initialisation import *
+from functions.initialisation2D import *
 from functions.prediction import *
 from functions.tracking import *
 from functions.trackingBackwards import *
@@ -80,7 +81,17 @@ def main():
         # initialise tracks based on P_clouds
         print('  triangulated particles per frame: ' , str([len(P) for P in P_clouds]), '\n\n')
         print('  Initialisation:')
-        allTracks, P_clouds = Initialisation(P_clouds,times_init[-1],params)
+        if params.modeInit == '2D':
+            imgPoints = [[np.loadtxt(params.imgPoints_path.format(cam=cam,timeString=str(t).zfill(params.Zeros)),skiprows=1) for t in times_init] for cam in params.cams]
+            for ci in range(len(imgPoints)):
+                print('  particles at cam '+str(params.cams[ci])+': ' , str([len(imgP) for imgP in imgPoints[ci]]))
+            allTracks, _ = Initialisation2D(imgPoints,times_init[-1],ax,ay,params)
+            [np.savetxt(params.track_path+"currentTriagPoints_"+str(i-1)+".txt",P_clouds[i],delimiter=',',header="X,Y,Z,error,cx_i,cy_i") for i in range(1,params.t_init)]
+            P_clouds = P_clouds[1::]
+            P_clouds.append([])
+        else:
+            allTracks, P_clouds = Initialisation(P_clouds,times_init[-1],params)
+            
         print('  initialised ' +  str(len(allTracks)) + ' tracks\n')
         # saving inital tracks to output folder
         SaveTracks(allTracks, params, "_initial", params.t_start, 'w')
@@ -134,6 +145,15 @@ def main():
             # initialise tracks based on P_clouds
             print('  triangulated particles per frame: ' , str([len(P) for P in P_clouds]), '\n')
             print('  Initialisation:')
+            #if params.modeInit == '2D':
+            #    imgPoints = [[np.loadtxt(params.imgPoints_path.format(cam=cam,timeString=str(t).zfill(params.Zeros)),skiprows=1) for t in times_init] for cam in params.cams]
+            #    for ci in range(len(imgPoints)):
+            #        print('  particles at cam '+str(params.cams[ci])+': ' , str([len(imgP) for imgP in imgPoints[ci]]))
+            #    allTracks, _ = Initialisation2D(imgPoints,t,ax,ay,params)
+            #    [np.savetxt(params.track_path+"currentTriagPoints_"+str(i-1)+".txt",P_clouds[i],delimiter=',',header="X,Y,Z,error,cx_i,cy_i") for i in range(1,params.t_init)]
+            #    P_clouds = P_clouds[1::]
+            #    P_clouds.append([])
+            #else:
             newTracks, P_clouds = Initialisation(P_clouds,t,params)
             print('  initialised ' +  str(len(newTracks)) + ' new tracks\n\n')
             # append all new found Tracks to the allTracks list 
